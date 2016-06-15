@@ -2,9 +2,7 @@
 Discord library written in only Luajit
 
 Discord.lua is a Discord library written entirely in Luajit. This means no Luvit, no async i/o, just pure Lua. This comes with its
-upsides and downsides. On the upside, you have more control over what is happening. On the downside, more is asynchronous than
-synchronous. Discord.lua is in a VERY early stage and shouldn't be used to host big bots yet. It can do simple text-channel tasks
-currently but nothing much else.
+upsides and downsides. On the upside, you have more control over what is happening and more things are guaranteed to be asynchronous. On the downside, you cannot guarantee the efficiency of async I/O. Discord.lua is in a VERY early stage and shouldn't be used to host big bots yet. It can do simple text-channel tasks currently but nothing much else.
 
 ## Installation
 Requirements: Luajit, lua-websockets, luasec (must be built) and lua-sockets.
