@@ -12,6 +12,7 @@ local websocket = require("websocket")
 local https = require("ssl.https")
 local json = require("cjson")
 local ltn12 = require("ltn12")
+local events = require("discord.events")(class)
 
 -- initial definition
 local shared = {}
@@ -61,30 +62,6 @@ private.send = function(client, data)
 	return private.do_(client:send(json.encode(data), 1))
 end
 
-private.handle_events = {
-	["READY"] = function(client, bot, data, raw)
-		bot._heartbeat_interval = data.heartbeat_interval
-		bot:event("ready")
-		spawn(function() bot:_heartbeat() end)
-	end,
-	["MESSAGE_CREATE"] = function(client, bot, data, raw)
-		local message = class.new "Message"
-		message.content = data.content
-		message.id = data.id
-		message.channel_id = data.channel_id
-		message.author = class.new "User"
-		message.author.username = data.author.username
-		message.author.id = data.author.id
-		bot:event("message", message)
-	end,
-	["TYPING_START"] = function(client, bot, data, raw)
-		print(raw)
-	end,
-	["PRESENCE_UPDATE"] = function(client, bot, data, raw)
-		print(raw)
-	end,
-}
-
 
 -- setup classes
 
@@ -121,8 +98,8 @@ class.define "Bot" {
 		if message ~= nil and opcode == 1 then
 			local data = json.decode(message)
 			self._last_seq = data.s
-			if private.handle_events[data.t] then
-				private.handle_events[data.t](self.client.wclient, self, data.d, message)
+			if events[data.t] then
+				events[data.t](self.client.wclient, self, data.d, message)
 			else
 				print("Unhandled payload: " .. data.t .. " [ignore]")
 			end
