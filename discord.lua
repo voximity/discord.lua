@@ -58,10 +58,6 @@ private.identify = function(token)
 	}
 end
 
-private.send = function(client, data)
-	return client:send(json.encode(data), 1)
-end
-
 
 -- setup classes
 
@@ -69,14 +65,14 @@ class.define "Bot" {
 	ready = false,
 	token = "",
 	client = 0,
+	id = "",
 	_heartbeat_interval = 0,
 	_last_seq = 0,
-	events = {
-		["message"] = {},
-		["ready"] = {}
-	};
+	events = {},
+	servers = {};
 
 	on = function(self, event_name, event_action)
+		if not self.events[event_name] then self.events[event_name] = {} end
 		table.insert(self.events[event_name], event_action)
 	end,
 	event = function(self, event_name, ...)
@@ -105,7 +101,7 @@ class.define "Bot" {
 		local text = tostring(text)
 		if #text >= 2000 then return false end
 		self.client:request({endpoints.channel, channel_id, "messages"}, "POST", {content = text, tts = tts or false})
-		return true
+		return true, nil
 	end,
 	type = function(self, channel_id)
 		self.client:request(endpoints.channel:gsub("CHANNEL_ID", channel_id) .. "/typing", "POST", {})
@@ -123,10 +119,18 @@ class.define "Bot" {
 		end
 		spawn(function() self._update(self) end)
 	end,
-	_heartbeat = function(self)
-		wait(self._heartbeat_interval / 1000)
-		local hbo, hbe = private.send(self.client.wclient, {op = 1, d = self._last_seq})
-		if not hbo then return hbsend.doerror() else spawn(function() self._heartbeat(self) end) end
+	_heartbeat = function(self, nowait)
+		if not nowait then wait(self._heartbeat_interval / 1000) else wait(1) end
+		local hbo, hbe = self.client:send{op = 1, d = self._last_seq}
+		if not hbo then
+			spawn(function()
+				self:_heartbeat(true)
+			end)
+		else
+			spawn(function()
+				self:_heartbeat()
+			end)
+		end
 	end,
 	connect = function(self, token)
 		self.token = token
@@ -139,7 +143,7 @@ class.define "Bot" {
 		if not conn.ok then return conn.doerror() end
 
 		local identify = private.identify(self.token)
-		local ident = private.do_(private.send(self.client.wclient, {op = 2, d = identify}))
+		local ident = private.do_(self.client:send{op = 2, d = identify})
 		if not ident.ok then return ident.doerror() end
 
 		spawn(function() self._update(self) end)
@@ -176,6 +180,38 @@ class.define "BotClient" {
 		end
 		local result, status, content = https.request(params)
 		return (out[1] or nil), result, status, content
+	end,
+
+	send = function(self, thej)
+		return self.wclient:send(json.encode(thej), 1)
+	end,
+
+	check_response = function(self, code)
+		if code == 200 then
+			return true, nil
+		elseif code == 201 then
+			return true, nil
+		elseif code == 304 then
+			return true, "The entity was not modified"
+		elseif code == 400 then
+			return false, "Improper entity format"
+		elseif code == 401 then
+			return false, "Unauthorized (no token)"
+		elseif code == 403 then
+			return false, "Forbidden (no access)"
+		elseif code == 404 then
+			return false, "Not found"
+		elseif code == 405 then
+			return false, "Method not allowed (use https)"
+		elseif code == 429 then
+			return false, "Rate-limited"
+		elseif code == 502 then
+			return false, "Gateway unavailable (wait and try later)"
+		elseif code == 501 or code > 502 then
+			return false, "Server error"
+		else
+			return false, "Unknown"
+		end
 	end
 }
 
@@ -228,6 +264,16 @@ class.define "User" {
 	mention = function(self)
 		return "<@" .. self.id .. ">"
 	end,
+	send = function(self, text)
+		if #text >= 2000 then return nil, false end
+		local obj, resp, stat, cont = shared.current_bot.client:request({endpoints.user, "@me/channels"}, "POST", {
+			recipient_id = self.id
+		})
+		local ok, err = shared.current_bot.client:check_response(stat)
+		if not ok then return ok, err end
+		local jsono = json.decode(obj)
+		return shared.current_bot:send(jsono.id, text)
+	end,
 }
 class.define "Channel" {
 	name = "",
@@ -258,32 +304,37 @@ class.define "Channel" {
 			no.bitrate = options.bitrate
 		end
 		local _, res, stat, cont = shared.current_bot.client:request({endpoints.channel, self.id}, "PATCH", no)
-		if stat == 401 then
-			return nil, "401: Unauthorized"
-		elseif stat == 403 then
-			return nil, "403: Forbidden"
-		elseif stat == 200 then
-			return true, nil
-		else
-			return nil, tostring(stat) .. ": Unknown"
-		end
+		return shared.current_bot.client:check_response(stat)
 	end,
 	delete = function(self)
 		if self.is_private then error("attempt to delete a private channel") end
 		local _, res, stat, cont = shared.current_bot.client:request({endpoints.channel, self.id}, "DELETE")
-		if stat == 401 then
-			return nil, "401: Unauthorized"
-		elseif stat == 403 then
-			return nil, "403: Forbidden"
-		elseif stat == 200 then
-			return true, nil
-		else
-			return nil, tostring(stat) .. ": Unknown"
-		end
+		return shared.current_bot.client:checkresponse(stat)
 	end,
 }
+class.define "Member" {
+	deaf = false,
+	mute = false,
+	user = {},
+	joined_at = "",
+	roles = {},
+	nickname = "",
+	username = ""
+}
 class.define "Server" {
-
+	name = "",
+	id = "",
+	large = false,
+	channels = {},
+	roles = {},
+	members = {},
+}
+class.define "Role" {
+	name = "",
+	position = 0,
+	id = "",
+	permissions = 0,
+	color = 0
 }
 
 shared.current_bot = {}
