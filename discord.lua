@@ -98,7 +98,8 @@ private.request = function(token, url, method, yayson)
 		},
 		sink = ltn12.sink.table(resp_table)
 	}
-	return resp_table[1] and json.decode(resp_table[1]) or true
+	print(resp_table[1])
+	return (resp_table[1] and json.decode(resp_table[1]) or {}), result, status, content
 end
 private.getrequest = function(token, url, method, yayson)
 	local resp_table = {}
@@ -138,46 +139,81 @@ class.define "Bot" {
 	send = function(self, channel_id, text, tts)
 		local text = tostring(text)
 		if #text >= 2000 then return false end
-		private.request(self.token, endpoints.send:gsub("CHANNEL_ID", channel_id), "POST", {content = text, tts = tts or false})
+		self.client:request({endpoints.channel, channel_id, "messages"}, "POST", {content = text, tts = tts or false})
 		return true
 	end,
+	type = function(self, channel_id)
+		self.client:request(endpoints.channel:gsub("CHANNEL_ID", channel_id) .. "/typing", "POST", {})
+	end,
 	_update = function(self)
-		local message, opcode = self.client:receive()
+		local message, opcode = self.client.wclient:receive()
 		if message ~= nil and opcode == 1 then
 			local data = json.decode(message)
 			self._last_seq = data.s
 			if private.handle_events[data.t] then
-				private.handle_events[data.t](self.client, self, data.d, message)
+				private.handle_events[data.t](self.client.wclient, self, data.d, message)
 			else
 				print("Unhandled payload: " .. data.t .. " [ignore]")
 			end
-		else
-			error("Lost connection to WSS server.")
 		end
 		spawn(function() self._update(self) end)
 	end,
 	_heartbeat = function(self)
 		wait(self._heartbeat_interval / 1000)
 		print("heartbeat")
-		local hbsend = private.do_(private.send(self.client, {op = 1, d = self._last_seq}))
+		local hbsend = private.send(self.client.wclient, {op = 1, d = self._last_seq})
 		if not hbsend.ok then return hbsend.doerror() else spawn(function() self._heartbeat(self) end) end
 	end,
 	connect = function(self, token)
 		self.token = token
+		self.client = class.new "BotClient"
+		self.client.wclient = websocket.client.new()
+		self.client.token = self.token
 		shared.current_bot = self
 
-		self.client = websocket.client.new()
-		local conn = private.do_(self.client:connect(private.get_gateway(), "wss", {mode = "client", protocol = "sslv23"}))
+		local conn = private.do_(self.client.wclient:connect(private.get_gateway(), "wss", {mode = "client", protocol = "sslv23"}))
 		if not conn.ok then return conn.doerror() end
 
 		local identify = private.identify(self.token)
-		local ident = private.do_(private.send(self.client, {op = 2, d = identify}))
+		local ident = private.do_(private.send(self.client.wclient, {op = 2, d = identify}))
 		if not ident.ok then return ident.doerror() end
 
 		spawn(function() self._update(self) end)
 	end
 }
 
+
+
+
+class.define "BotClient" {
+	wclient = 0,
+	token = 0,
+
+	request = function(self, url, method, sourcejson)
+		if type(url) == "table" then url = table.concat(url, "/") end
+		local out = {}
+		local params = {
+			url = url,
+			sink = ltn12.sink.table(out),
+			headers = {
+				["Authorization"] = self.token
+			}
+		}
+		if method then
+			params.method = method
+		end
+		if sourcejson then
+			if type(sourcejson) == "table" then
+				sourcejson = json.encode(sourcejson)
+			end
+			params.source = ltn12.source.string(sourcejson)
+			params.headers["Content-Type"] = "application/json"
+			params.headers["Content-Length"] = #sourcejson
+		end
+		local result, status, content = https.request(params)
+		return (out[1] or nil), result, status, content
+	end
+}
 
 
 
@@ -191,7 +227,8 @@ class.define "Message" {
 
 	get_channel = function(self)
 		if self._channel ~= "non" then return self._channel end
-		local rj = private.getrequest(shared.current_bot.token, endpoints.channel:gsub("CHANNEL_ID", self.channel_id))
+		local rj = shared.current_bot.client:request({endpoints.channel, self.channel_id}, "GET")
+		rj = json.decode(rj)
 		local channel = class.new "Channel"
 		self._channel = channel
 		if rj.is_private then
@@ -201,6 +238,8 @@ class.define "Message" {
 			channel.server_id = ""
 			channel.type = "private"
 			channel.topic = ""
+			channel.position = -1
+			channel.bitrate = -1
 		else
 			channel.is_private = false
 			channel.type = rj.type
@@ -208,6 +247,8 @@ class.define "Message" {
 			channel.server_id = rj.guild_id
 			channel.topic = rj.topic
 			channel.id = rj.id
+			channel.position = rj.position
+			channel.bitrate = rj.type == "voice" and rj.bitrate or -1
 		end
 		return channel
 	end,
@@ -230,9 +271,51 @@ class.define "Channel" {
 	is_private = false,
 	type = "",
 	topic = "",
+	position = 0,
+	bitrate = 0,
 
 	send = function(self, text, tts)
 		return shared.current_bot:send(self.id, text, tts)
+	end,
+	modify = function(self, options)
+		if self.is_private then error("attempt to modify a private channel") end
+		local options = options or {}
+		options.name = options.name or self.name
+		options.position = options.position or self.position
+		options.topic = options.topic or self.topic
+		options.bitrate = options.bitrate or self.bitrate
+		print(options.name, options.position, options.topic, options.bitrate)
+		local no = {}
+		no.name = options.name
+		no.position = options.position
+		if self.type == "text" then
+			no.topic = options.topic
+		else
+			no.bitrate = options.bitrate
+		end
+		local _, res, stat, cont = shared.current_bot.client:request({endpoints.channel, self.id}, "PATCH", no)
+		if stat == 401 then
+			return nil, "401: Unauthorized"
+		elseif stat == 403 then
+			return nil, "403: Forbidden"
+		elseif stat == 200 then
+			return true, nil
+		else
+			return nil, tostring(stat) .. ": Unknown"
+		end
+	end,
+	delete = function(self)
+		if self.is_private then error("attempt to delete a private channel") end
+		local _, res, stat, cont = shared.current_bot.client:request({endpoints.channel, self.id}, "DELETE")
+		if stat == 401 then
+			return nil, "401: Unauthorized"
+		elseif stat == 403 then
+			return nil, "403: Forbidden"
+		elseif stat == 200 then
+			return true, nil
+		else
+			return nil, tostring(stat) .. ": Unknown"
+		end
 	end,
 }
 class.define "Server" {

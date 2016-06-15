@@ -18,8 +18,8 @@ class.new = function(name)
 	local newmeta = {}
 	for i,v in next, meta do newmeta[i] = v end
 	setmetatable(newmeta, {
-		__index = function(t,i) error("attempt to access nonexistant property of class " .. name) end;
-		__newindex = function(t,i) error("attempt to set nonexistant property of class " .. name) end;
+		__index = function(t,i) error("attempt to access nonexistant property of class " .. name .. ": " .. tostring(i)) end;
+		__newindex = function(t,i) error("attempt to set nonexistant property of class " .. name .. ": " .. tostring(i)) end;
 		__len = function(t) error("attempt to get length of class " .. name) end;
 	})
 	return newmeta
