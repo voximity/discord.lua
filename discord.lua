@@ -38,7 +38,7 @@ private.do_ = function(ok, err, ...)
 		ok = ok,
 		error = err,
 		err = err,
-		doerror = function() error(err) return nil, err end,
+		doerror = function() error(tostring(err)) return nil, err end,
 		extra = {...}
 	}
 end
@@ -59,7 +59,7 @@ private.identify = function(token)
 end
 
 private.send = function(client, data)
-	return private.do_(client:send(json.encode(data), 1))
+	return client:send(json.encode(data), 1)
 end
 
 
@@ -82,6 +82,23 @@ class.define "Bot" {
 	event = function(self, event_name, ...)
 		for _, ev in next, self.events[event_name] do
 			ev(...)
+		end
+	end,
+	get_user = function(self, id)
+		local obj, res, stat, cont = self.client:request({endpoints.user, id}, "GET")
+		if stat == 401 then
+			return nil, "401: Unauthorized"
+		elseif stat == 403 then
+			return nil, "403: Forbidden"
+		elseif stat == 200 then
+			local obj = json.decode(obj)
+			local user = class.new "User"
+			user.id = obj.id
+			user.username = obj.username
+			user.discriminator = obj.discriminator
+			return user, nil
+		else
+			return nil, tostring(stat) .. ": Unknown"
 		end
 	end,
 	send = function(self, channel_id, text, tts)
@@ -108,8 +125,8 @@ class.define "Bot" {
 	end,
 	_heartbeat = function(self)
 		wait(self._heartbeat_interval / 1000)
-		local hbsend = private.send(self.client.wclient, {op = 1, d = self._last_seq})
-		if not hbsend.ok then return hbsend.doerror() else spawn(function() self._heartbeat(self) end) end
+		local hbo, hbe = private.send(self.client.wclient, {op = 1, d = self._last_seq})
+		if not hbo then return hbsend.doerror() else spawn(function() self._heartbeat(self) end) end
 	end,
 	connect = function(self, token)
 		self.token = token
@@ -206,6 +223,7 @@ class.define "Message" {
 class.define "User" {
 	username = "Username",
 	id = "ID",
+	discriminator = "",
 
 	mention = function(self)
 		return "<@" .. self.id .. ">"
