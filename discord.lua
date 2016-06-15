@@ -85,35 +85,6 @@ private.handle_events = {
 	end,
 }
 
-private.request = function(token, url, method, yayson)
-	local resp_table = {}
-	local result, status, content = https.request {
-		url = url,
-		method = method,
-		source = yayson and ltn12.source.string(json.encode(yayson)) or nil,
-		headers = {
-			["Authorization"] = token,
-			["Content-Type"] = "application/json",
-			["Content-Length"] = string.len(json.encode(yayson))
-		},
-		sink = ltn12.sink.table(resp_table)
-	}
-	print(resp_table[1])
-	return (resp_table[1] and json.decode(resp_table[1]) or {}), result, status, content
-end
-private.getrequest = function(token, url, method, yayson)
-	local resp_table = {}
-	local result, status, content = https.request {
-		url = url,
-		headers = {
-			["Authorization"] = token
-		},
-		sink = ltn12.sink.table(resp_table)
-	}
-	print(resp_table[1])
-	return resp_table[1] and json.decode(resp_table[1]) or true
-end
-
 
 -- setup classes
 
@@ -160,7 +131,6 @@ class.define "Bot" {
 	end,
 	_heartbeat = function(self)
 		wait(self._heartbeat_interval / 1000)
-		print("heartbeat")
 		local hbsend = private.send(self.client.wclient, {op = 1, d = self._last_seq})
 		if not hbsend.ok then return hbsend.doerror() else spawn(function() self._heartbeat(self) end) end
 	end,
@@ -284,7 +254,6 @@ class.define "Channel" {
 		options.position = options.position or self.position
 		options.topic = options.topic or self.topic
 		options.bitrate = options.bitrate or self.bitrate
-		print(options.name, options.position, options.topic, options.bitrate)
 		local no = {}
 		no.name = options.name
 		no.position = options.position
