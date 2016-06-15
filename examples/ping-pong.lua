@@ -9,6 +9,8 @@ bot:on("message", function(m)
 		--another way of doing this:
 		--  m:get_channel():send(m.author:mention() .. ", pong!")
 		--  bot:send(m.channel_id, m.author:mention() .. ", pong!")
+
+		m.author:send("This is in a DM!")
 	end
 end)
 bot:on("ready", function()
