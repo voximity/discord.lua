@@ -16,6 +16,8 @@ return function(class)
 			message.author = class.new "User"
 			message.author.username = data.author.username
 			message.author.id = data.author.id
+			message.author.bot = bot
+			message.bot = bot
 			bot:event("message", message)
 		end,
 		["TYPING_START"] = function(client, bot, data, raw)
@@ -32,6 +34,7 @@ return function(class)
 			server.channels = {}
 			server.roles = {}
 			server.members = {}
+			server.bot = bot
 			for i,v in next, data.channels do
 				local channel = class.new "Channel"
 				channel.name = v.name
@@ -41,6 +44,7 @@ return function(class)
 				channel.is_private = false
 				channel.topic = v.topic
 				channel.position = v.position
+				channel.bot = bot
 				table.insert(server.channels, v)
 			end
 			for i,v in next, data.roles do
@@ -50,6 +54,7 @@ return function(class)
 				role.color = v.color
 				role.permissions = v.permissions
 				role.id = v.id
+				role.bot = bot
 				table.insert(server.roles, role)
 			end
 			for i,v in next, data.members do
@@ -64,6 +69,8 @@ return function(class)
 				member.user.username = member.username
 				member.user.id = v.user.id
 				member.user.discriminator = v.user.discriminator
+				member.user.bot = bot
+				member.bot = bot
 				table.insert(server.members, member)
 			end
 			table.sort(server.roles, function(a,b) return a.position < b.position end)

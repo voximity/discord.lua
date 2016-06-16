@@ -93,6 +93,7 @@ class.define "Bot" {
 			user.id = obj.id
 			user.username = obj.username
 			user.discriminator = obj.discriminator
+			user.bot = self
 			return user, nil
 		else
 			return nil, tostring(stat) .. ": Unknown"
@@ -105,7 +106,7 @@ class.define "Bot" {
 		return true, nil
 	end,
 	type = function(self, channel_id)
-		self.client:request(endpoints.channel:gsub("CHANNEL_ID", channel_id) .. "/typing", "POST", {})
+		self.client:request({endpoints.channel, channel_id, "typing"}, "POST", {})
 	end,
 	_update = function(self)
 		local message, opcode = self.client.wclient:receive()
@@ -138,7 +139,6 @@ class.define "Bot" {
 		self.client = class.new "BotClient"
 		self.client.wclient = websocket.client.tsched()
 		self.client.token = self.token
-		shared.current_bot = self
 
 		local conn = private.do_(self.client.wclient:connect(private.get_gateway(), "wss", {mode = "client", protocol = "sslv23"}))
 		if not conn.ok then return conn.doerror() end
@@ -226,12 +226,15 @@ class.define "Message" {
 	author = {},
 	_channel = "non",
 
+	bot = {},
+
 	get_channel = function(self)
 		if self._channel ~= "non" then return self._channel end
-		local rj = shared.current_bot.client:request({endpoints.channel, self.channel_id}, "GET")
+		local rj = self.bot.client:request({endpoints.channel, self.channel_id}, "GET")
 		rj = json.decode(rj)
 		local channel = class.new "Channel"
 		self._channel = channel
+		channel.bot = self.bot
 		if rj.is_private then
 			channel.is_private = true
 			channel.name = "@" .. rj.recipient.username
@@ -254,7 +257,7 @@ class.define "Message" {
 		return channel
 	end,
 	reply = function(self, text, tts)
-		return shared.current_bot:send(self.channel_id, self.author:mention() .. ", " .. text, tts)
+		return self.bot:send(self.channel_id, self.author:mention() .. ", " .. text, tts)
 	end
 }
 class.define "User" {
@@ -262,18 +265,20 @@ class.define "User" {
 	id = "ID",
 	discriminator = "",
 
+	bot = {},
+
 	mention = function(self)
 		return "<@" .. self.id .. ">"
 	end,
 	send = function(self, text)
 		if #text >= 2000 then return nil, false end
-		local obj, resp, stat, cont = shared.current_bot.client:request({endpoints.user, "@me/channels"}, "POST", {
+		local obj, resp, stat, cont = self.bot.client:request({endpoints.user, "@me/channels"}, "POST", {
 			recipient_id = self.id
 		})
-		local ok, err = shared.current_bot.client:check_response(stat)
+		local ok, err = self.bot.client:check_response(stat)
 		if not ok then return ok, err end
 		local jsono = json.decode(obj)
-		return shared.current_bot:send(jsono.id, text)
+		return self.bot:send(jsono.id, text)
 	end,
 }
 class.define "Channel" {
@@ -286,8 +291,10 @@ class.define "Channel" {
 	position = 0,
 	bitrate = 0,
 
+	bot = {},
+
 	send = function(self, text, tts)
-		return shared.current_bot:send(self.id, text, tts)
+		return self.bot:send(self.id, text, tts)
 	end,
 	modify = function(self, options)
 		if self.is_private then error("attempt to modify a private channel") end
@@ -304,13 +311,21 @@ class.define "Channel" {
 		else
 			no.bitrate = options.bitrate
 		end
-		local _, res, stat, cont = shared.current_bot.client:request({endpoints.channel, self.id}, "PATCH", no)
-		return shared.current_bot.client:check_response(stat)
+		local _, res, stat, cont = self.bot.client:request({endpoints.channel, self.id}, "PATCH", no)
+		return self.bot.client:check_response(stat)
 	end,
 	delete = function(self)
 		if self.is_private then error("attempt to delete a private channel") end
-		local _, res, stat, cont = shared.current_bot.client:request({endpoints.channel, self.id}, "DELETE")
-		return shared.current_bot.client:checkresponse(stat)
+		local _, res, stat, cont = self.bot.client:request({endpoints.channel, self.id}, "DELETE")
+		return self.bot.client:checkresponse(stat)
+	end,
+	get_server = function(self)
+		for i,v in next, self.bot.servers do
+			if v.id == self.server_id then
+				return v
+			end
+		end
+		return nil, "no server match"
 	end,
 }
 class.define "Member" {
@@ -320,7 +335,9 @@ class.define "Member" {
 	joined_at = "",
 	roles = {},
 	nickname = "",
-	username = ""
+	username = "",
+
+	bot = {}
 }
 class.define "Server" {
 	name = "",
@@ -329,16 +346,19 @@ class.define "Server" {
 	channels = {},
 	roles = {},
 	members = {},
+
+	bot = {}
 }
 class.define "Role" {
 	name = "",
 	position = 0,
 	id = "",
 	permissions = 0,
-	color = 0
+	color = 0,
+
+	bot = {}
 }
 
-shared.current_bot = {}
 shared.new = function()
 	local bot = class.new "Bot"
 	return bot
