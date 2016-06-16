@@ -19,7 +19,7 @@ return function(class)
 			bot:event("message", message)
 		end,
 		["TYPING_START"] = function(client, bot, data, raw)
-			print(raw)
+			bot:event("typing", data.channel_id, data.user_id)
 		end,
 		["PRESENCE_UPDATE"] = function(client, bot, data, raw)
 			print(raw)

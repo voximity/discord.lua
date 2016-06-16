@@ -9,7 +9,7 @@ Requirements: Luajit, lua-websockets, luasec (must be built) and lua-sockets.
 
 1. Make sure all requirements are placed accordingly and the %LUA_PATH% has successfully been set.
 
-2. Download the discord.lua repository. Place the "discord" folder, the "discord.lua" file and "schedule.lua" directly into your %LUA_PATH%.
+2. Download the discord.lua repository. Place the "discord" folder, the "discord.lua" file and "schedule.lua" directly into your %LUA_PATH%. Then put the "client_tsched.lua" file in the websocket folder.
 
 3. Take an example from the examples directory and place it somewhere, preferably in your %LUA_PATH%.
 

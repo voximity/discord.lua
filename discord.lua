@@ -76,6 +76,7 @@ class.define "Bot" {
 		table.insert(self.events[event_name], event_action)
 	end,
 	event = function(self, event_name, ...)
+		if not self.events[event_name] then self.events[event_name] = {} end
 		for _, ev in next, self.events[event_name] do
 			ev(...)
 		end
@@ -121,7 +122,7 @@ class.define "Bot" {
 	end,
 	_heartbeat = function(self, nowait)
 		if not nowait then wait(self._heartbeat_interval / 1000) else wait(1) end
-		local hbo, hbe = self.client:send{op = 1, d = self._last_seq}
+		local hbo, hbe, abc, abcd = self.client.wclient:send(json.encode {op = 1, d = self._last_seq}, 1)
 		if not hbo then
 			spawn(function()
 				self:_heartbeat(true)
@@ -135,7 +136,7 @@ class.define "Bot" {
 	connect = function(self, token)
 		self.token = token
 		self.client = class.new "BotClient"
-		self.client.wclient = websocket.client.new()
+		self.client.wclient = websocket.client.tsched()
 		self.client.token = self.token
 		shared.current_bot = self
 
