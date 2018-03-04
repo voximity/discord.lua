@@ -1,3 +1,6 @@
+# ABANDONED
+This library is abandoned. It has not been worked on for a long time and probably doesn't even support Discord's latest API changes. You're free to play around if you wish, but I recommend you check out my newer library for Dart named [Dartsicord](https://github.com/voximity/dartsicord).
+
 # discord.lua
 Discord library written in only Luajit
 
